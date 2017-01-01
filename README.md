@@ -25,8 +25,8 @@ Controls:
     Fractal rendering:
 
       See fractal rendering controls
-
-   Fractal rendering controls:
+  
+  Fractal rendering controls:
 
     //sorry, these are terrible. If I had access to the gyroscope, they wouldn't be...
 
