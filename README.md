@@ -1,6 +1,6 @@
 # PebbleFractal
 
-  This is an app that runs on pebble time and pebble time steel watches. It can render julia and mandelbrot sets of any kind. The controls and UI are a bit sloppy, but I'll continue working to fix it.
+  This is an app that runs on pebble time and pebble time steel watches which can render julia and mandelbrot sets of any kind. The controls and UI are a bit sloppy, but I'll continue working to fix it.
 
 Controls:
 
