@@ -66,4 +66,4 @@ Controls:
 
       down - press multiple times in succession to go to the left that many increments
 
-      select - state = leftandrightstate
+      select - state = zoomstate
