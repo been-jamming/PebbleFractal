@@ -4,17 +4,110 @@
 #include <ctype.h>
 #include <string.h>
 
+#define SHIFT 24
+
+struct fixed_struct{
+  int32_t value;
+  unsigned short int shift;
+};
+
+typedef struct fixed_struct fixed;
+
+void set_value(fixed *num, int value){
+  num->value = value<<(num->shift);
+}
+
+void set_shift(fixed *num, int shift){
+  num->value = num->value>>(num->shift - shift);
+  num->shift = shift;
+}
+
+fixed transform_fixed(fixed num1, fixed num2){
+  fixed num3;
+  num3.shift = num2.shift;
+  num3.value = num1.value>>(num1.shift - num2.shift);
+  return num3;
+}  
+
+fixed transform_integer(int num1, fixed num2){
+  fixed num3;
+  num3.shift = num2.shift;
+  num3.value = num1<<num2.shift;
+  return num3;
+}
+
+fixed multiply_fixed(fixed num1, fixed num2){
+  fixed num3;
+  num3.shift = num1.shift/2 + num2.shift/2;
+  num3.value = (num1.value>>(num1.shift/2)) * (num2.value>>(num2.shift/2));
+  return num3;
+}
+
+fixed divide_fixed(fixed num1, fixed num2){
+  fixed num3;
+  num3.shift = num1.shift-num2.shift;
+  num3.value = num1.value/num2.value;
+  return num3;
+}
+
+float divide_fixed_float(fixed num1, fixed num2){
+  return ((float) num1.value)/((float) num2.value)*(1<<(num1.shift - num2.shift));
+}
+
+fixed add_float(fixed num1, float num2){
+  fixed num3;
+  num3.shift = num1.shift;
+  num3.value = (int) (num1.value + num2*(1<<num1.shift));
+  return num3;
+}
+
+fixed subtract_float(fixed num1, float num2){
+  fixed num3;
+  num3.shift = num1.shift;
+  num3.value = (int) (num1.value - num2*(1<<num1.shift));
+  return num3;
+}
+
+fixed add_integer(fixed num1, int num2){
+  fixed num3;
+  num3.shift = num1.shift;
+  num3.value = num1.value + num2*(1<<num1.shift);
+  return num3;
+}
+
+fixed add_fixed(fixed num1, fixed num2){
+  fixed num3;
+  num3.shift = num1.shift;
+  num3.value = num1.value + (num2.value<<(num1.shift - num2.shift));
+  return num3;
+}
+
+fixed subtract_fixed(fixed num1, fixed num2){
+  fixed num3;
+  num3.shift = num1.shift;
+  num3.value = num1.value - (num2.value<<(num1.shift - num2.shift));
+  return num3;
+}
+
+void increment_fixed(fixed *num1, float num2){
+  num1->value = (int) (num1->value + num2*(1<<num1->shift));
+}
+
+float fixed_to_float(fixed num1){
+  return ((float) num1.value)/(1<<num1.shift);
+}
+
 static Window *main_window;
 static TextLayer *number;
 static SimpleMenuLayer *menu;
 GRect bounds;
 static SimpleMenuSection sections[1];
 static SimpleMenuItem menuitems[2];
-static double value = 0;
+static fixed value = {.value = 0, .shift = SHIFT};
 char text[6];
 
-static double imaginary = 0;
-static double real = 0;
+static fixed imaginary = {.value = 0, .shift = SHIFT};
+static fixed real = {.value = 0, .shift = SHIFT};
 
 static short int state = -1;
 static unsigned short int textlayer_active = 1;
@@ -22,8 +115,8 @@ static bool julia;
 static bool rendered = 0;
 
 static float zoom = 1;
-static float x_offset = 0;
-static float y_offset = 0;
+static fixed x_offset = {.value = 0, .shift = SHIFT};
+static fixed y_offset = {.value = 0, .shift = SHIFT};
 
 static unsigned short int move_state = 0;
 
@@ -49,8 +142,8 @@ static void float_to_string(char *output, float flt){
   output[5] = 0;
 }
 
-static void change(float num){
-  float_to_string(text, num);
+static void change(fixed num){
+  float_to_string(text, fixed_to_float(num));
   if(textlayer_active){
     text_layer_set_text(number, text);
   }
@@ -66,15 +159,15 @@ static void byte_set_bit(uint8_t *byte, uint8_t bit, uint8_t value) {
 
 static void down_click_handler(ClickRecognizerRef recognizer, void *context){
   if(state != 2 && state != -1){
-    value -= 0.01;
+    increment_fixed(&value, -0.01);
     change(value);
   } else {
     if(move_state == 0){
       zoom /= 2;
     } else if(move_state == 1){
-      y_offset -= 0.2/zoom;
+      increment_fixed(&y_offset, -0.2/zoom);
     } else {
-      x_offset -= 0.2/zoom;
+      increment_fixed(&x_offset, -0.2/zoom);
     }
     rendered = 0;
     layer_mark_dirty(window_layer);
@@ -83,15 +176,15 @@ static void down_click_handler(ClickRecognizerRef recognizer, void *context){
 
 static void up_click_handler(ClickRecognizerRef recognizer, void *context){
   if(state != 2 && state != 1){
-    value += 0.01;
+    increment_fixed(&value, 0.01);
     change(value);
   } else {
     if(move_state == 0){
       zoom *= 2;
     } else if(move_state == 1){
-      y_offset += 0.2/zoom;
+      increment_fixed(&y_offset, 0.2/zoom);
     } else {
-      x_offset += 0.2/zoom;
+      increment_fixed(&x_offset, 0.2/zoom);
     }
     rendered = 0;
     layer_mark_dirty(window_layer);
@@ -100,15 +193,15 @@ static void up_click_handler(ClickRecognizerRef recognizer, void *context){
 
 static void down_click_handler_held(ClickRecognizerRef recognizer, void *context){
   if(state != 2 && state != -1){
-    value -= 0.01;
+    increment_fixed(&value, -0.01);
     change(value);
   } else {
     if(move_state == 0){
       zoom /= 2;
     } else if(move_state == 1){
-      y_offset -= 0.2/zoom;
+      increment_fixed(&y_offset, -0.2/zoom);
     } else {
-      x_offset -= 0.2/zoom;
+      increment_fixed(&x_offset, -0.2/zoom);
     }
     rendered = 0;
     layer_mark_dirty(window_layer);
@@ -117,15 +210,15 @@ static void down_click_handler_held(ClickRecognizerRef recognizer, void *context
 
 static void up_click_handler_held(ClickRecognizerRef recognizer, void *context){
   if(state != 2 && state != -1){
-    value += 0.01;
+    increment_fixed(&value, 0.01);
     change(value);
   } else {
     if(move_state == 0){
       zoom *= 2;
     } else if(move_state == 1){
-      y_offset += 0.2/zoom;
+      increment_fixed(&y_offset, 0.2/zoom);
     } else {
-      x_offset += 0.2/zoom;
+      increment_fixed(&x_offset, 0.2/zoom);
     }
     rendered = 0;
     layer_mark_dirty(window_layer);
@@ -160,7 +253,7 @@ void select_click_handler(ClickRecognizerRef recognizer, void *context){
   }
   
   if(state != 2 && state != -1){
-    value = 0;
+    value.value = 0;
     text_layer_set_text(number, "0.00");
   }
 }
@@ -206,27 +299,35 @@ static void click_config_provider(void *context) {
 
 }
 
-static void get_point(int x, int y, double *x_out, double *y_out){
-  *x_out = (((float) x - 71.5))/38.5/zoom + x_offset;
-  *y_out = (-((float) y - 84.5))/38.5/zoom + y_offset;
+static void get_point(int x, int y, fixed *x_out, fixed *y_out){
+  fixed new_x = {.value = x<<16, .shift = 16};
+  fixed new_y = {.value = y<<16, .shift = 16};
+  fixed temp = subtract_float(new_x, 71.5);
+  temp.value = (int32_t) (temp.value/38.5/zoom);
+  *x_out = add_fixed(x_offset, temp);
+  temp = subtract_float(new_y, 84.5);
+  temp.value = (int32_t) (temp.value/-38.5/zoom);
+  *y_out = add_fixed(y_offset, temp);
 }
 
 static GColor julia_color(int x, int y){
-  double current_imaginary = 0;
-  double current_real = 0;
+  fixed current_imaginary = {.value = 0, .shift = SHIFT};
+  fixed current_real = {.value = 0, .shift = SHIFT};
   static short int red = 0;
   static short int green = 0;
   static short int blue = 0;
   static short int iteration;
   get_point(x, y, &current_real, &current_imaginary);
-  static double temp = 0;
+  static fixed temp;
   iteration = -1;
+  fixed dissquared;
   for(int i = 0; i < QUALITY; i++){
-    temp = current_real*current_real - current_imaginary*current_imaginary + real;
-    current_imaginary = 2*current_real*current_imaginary + imaginary;
+    temp = add_fixed(subtract_fixed(multiply_fixed(current_real, current_real), multiply_fixed(current_imaginary, current_imaginary)), real);
+    current_imaginary = add_fixed(multiply_fixed(current_real, current_imaginary), imaginary);
+    current_imaginary.value = current_imaginary.value<<1;
     current_real = temp;
-
-    if((current_real*current_real + current_imaginary*current_imaginary) > 4){
+    dissquared = add_fixed(multiply_fixed(current_real, current_real), multiply_fixed(current_imaginary, current_imaginary));
+    if((dissquared.value>>dissquared.shift) > 4){
       iteration = i;
       break;
     }
@@ -236,8 +337,6 @@ static GColor julia_color(int x, int y){
     red = 0;
     green = 0;
     blue = 0;
-    //APP_LOG(APP_LOG_LEVEL_DEBUG, "x: %d", x);
-    //APP_LOG(APP_LOG_LEVEL_DEBUG, "y: %d", y);
   } else if(iteration < third){
     red = (int) 255*(1-((float) iteration)/third);
     green = 255;
@@ -266,21 +365,24 @@ static GColor julia_color(int x, int y){
 }
 
 static GColor mandelbrot_color(int x, int y){
-  double current_imaginary = 0;
-  double current_real = 0;
+  fixed current_imaginary = {.value = 0, .shift = SHIFT};
+  fixed current_real = {.value = 0, .shift = SHIFT};
   static short int red = 0;
   static short int green = 0;
   static short int blue = 0;
   static short int iteration;
   get_point(x, y, &real, &imaginary);
-  static double temp = 0;
+  static fixed temp;
   iteration = -1;
+  fixed dissquared;
+  imaginary.value = imaginary.value>>1;
   for(int i = 0; i < QUALITY; i++){
-    temp = current_real*current_real - current_imaginary*current_imaginary + real;
-    current_imaginary = 2*current_real*current_imaginary + imaginary;
+    temp = add_fixed(subtract_fixed(multiply_fixed(current_real, current_real), multiply_fixed(current_imaginary, current_imaginary)), real);
+    current_imaginary = add_fixed(multiply_fixed(current_real, current_imaginary), imaginary);
+    current_imaginary.value = current_imaginary.value<<1;
     current_real = temp;
-
-    if((current_real*current_real + current_imaginary*current_imaginary) > 4){
+    dissquared = add_fixed(multiply_fixed(current_real, current_real), multiply_fixed(current_imaginary, current_imaginary));
+    if((dissquared.value>>dissquared.shift) > 4){
       iteration = i;
       break;
     }
@@ -290,8 +392,6 @@ static GColor mandelbrot_color(int x, int y){
     red = 0;
     green = 0;
     blue = 0;
-    //APP_LOG(APP_LOG_LEVEL_DEBUG, "x: %d", x);
-    //APP_LOG(APP_LOG_LEVEL_DEBUG, "y: %d", y);
   } else if(iteration < third){
     red = (int) 255*(1-((float) iteration)/third);
     green = 255;
